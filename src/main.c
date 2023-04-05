@@ -231,10 +231,21 @@ static void pack(const char *path) {
     packdict(tmp, &p);
     fclose(p.fp);
     fclose(p.fpbj);
+    // delete interned strings
+    int i = 0;
+    TSlot slot;
+    while ((i = tabgeti(p.strtab, i, &slot))) {
+        free(slot.val.str);
+    }
     freetab(p.strtab);
     freetab(p.keytab);
 }
 
+// loads the dictionary file to a table
+// the mappings are reversed i.e. numbers get mapped to strings
+// the hashmap doesn't support int keys so they're stringified
+// a bit dirty but not a big speed penalty and saves us from adding special
+// cases to the hashmap or making a new one
 static void loaddict(Unpacker *up, const char *path) {
     if (up->debug)
         printf("--- %s ---\n", up->pdict);
@@ -321,6 +332,13 @@ bug:
 end:
     fclose(fpbj);
     fclose(fpjson);
+    // delete dictionary keys and vlaues
+    int i = 0;
+    TSlot slot;
+    while ((i = tabgeti(up->dict, i, &slot))) {
+        free((void *)slot.key);
+        free(slot.val.str);
+    }
     freetab(up->dict);
 }
 

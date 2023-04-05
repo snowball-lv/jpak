@@ -21,6 +21,7 @@ int strhash(const char *str) {
     return hash;
 }
 
+// changes file extension, make sure the dst buffer is big enough
 void chext(char *dst, const char *path, const char *ext) {
     strcpy(dst, path);
     char *period = strrchr(dst, '.');
@@ -84,6 +85,7 @@ static void grow(Table *t) {
     *t = tmp;
 }
 
+// make sure the key isn't stack allocated in case it gets added to the table
 void tabput(Table *t, const char *key, TVal val) {
     if (t->nused * 2 >= t->nslots)
         grow(t);
@@ -93,6 +95,7 @@ void tabput(Table *t, const char *key, TVal val) {
     s->val = val;
 }
 
+// absolutely no modification of table while iterating
 int tabgeti(Table *t, int i, TSlot *dst) {
     for (int k = i; k < t->nslots; k++) {
         TSlot *s = &t->slots[k];
