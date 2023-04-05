@@ -13,7 +13,7 @@ void err(char *fmt, ...) {
 }
 
 // http://www.cse.yorku.ca/~oz/hash.html
-unsigned strhash(const char *str) {
+static unsigned strhash(const char *str) {
     unsigned hash = 5381;
     int c;
     while ((c = *str++))
@@ -46,14 +46,15 @@ void freetab(Table *t) {
     free(t);
 }
 
-// we do't remove items from the map so tombstones aren't necessary
-// % could be optimized away if only sticking to power of 2 table sizes
+// returns either the first empty slot or one matching your key.
+// we do't remove items from the map so tombstones aren't necessary.
+// % could be optimized away if only sticking to power of 2 table sizes.
 static TSlot *find(Table *t, const char *key) {
     if (!t->nslots) return 0;
     unsigned hash = strhash(key);
     int idx = hash % t->nslots;
     TSlot *s = &t->slots[idx];
-    while (s->key && strcmp(s->key, key) != 0) {
+    while (s->key && (s->hash != hash || strcmp(s->key, key) != 0)) {
         idx = (idx + 1) % t->nslots;
         s = &t->slots[idx];
     }
@@ -93,6 +94,7 @@ void tabput(Table *t, const char *key, TVal val) {
     if (!s->key) t->nused++;
     s->key = key;
     s->val = val;
+    s->hash = strhash(key);
 }
 
 // absolutely no modification of table while iterating

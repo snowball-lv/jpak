@@ -4,7 +4,6 @@
 void err(char *fmt, ...);
 #define ERR(fmt, ...) err("*** " fmt "\n", ##__VA_ARGS__)
 
-unsigned strhash(const char *str);
 void chext(char *dst, const char *path, const char *ext);
 
 typedef union {
@@ -14,6 +13,7 @@ typedef union {
 
 typedef struct {
     const char *key;
+    unsigned hash;
     TVal val;
 } TSlot;
 

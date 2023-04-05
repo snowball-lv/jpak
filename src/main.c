@@ -46,8 +46,12 @@ typedef struct {
     int debug;          // set to print dict. to stdout when unpacking
 } Unpacker;
 
-// interns new strings and adds them to strtab
-// buf has to be zero terminated
+// interns new strings and adds them to strtab.
+// buf has to be zero terminated.
+// we could prepend each string with a header holding it's length and
+// pre-calculated hash and require the user to only use interned strings with
+// the hashmap but i'd like to keep the requirements looser and the speed
+// penalty isn't that bad.
 static char *newstr(Parser *p, char *buf, int len) {
     if (tabhas(p->strtab, buf))
         return tabget(p->strtab, buf).str;
