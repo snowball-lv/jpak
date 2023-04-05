@@ -1,4 +1,3 @@
-
 { "key1":"val\"ue", "key2":42, "key3":true}
 {"sadsf":"dsewtew", "dsre":3221, "sdfds":"dsfewew"}
 {"key1":true, "dsre":false}
@@ -8,7 +7,7 @@
 { "hello": "world"}
 { "xxxyyyyyyyyyyyyyyyyyyyyyyyyyy": 1}
 { "xxxxxxxxvxbcbcnbxvn": 1}
-{ "xxbcvnxcvbvyyyyyxcvbnbvnyyyyyyyyyyyyy": 1}
+{ "xxbcvnxcvbvyyyyyxcvbnbvnyyyyyyyyyyyyy": 1, "xxxyyyyyzcvbxcvbxcyyyyyyyyyy": true}
 { "xxxyyyyyzcvbxcvbxcyyyyyyyyyy": 1}
 { "xxxyyyyyyyyyxcvzbxcvbyyyyyyyyyy": 1}
 { "xxxyycvbcvbyyyyyyyyyyyyyyyyyy": 1}
@@ -18,4 +17,5 @@
 { "xxxyyyyyyyyyyysdfsdfyyyyy": 1}
 {}
 {"lol": "lmao", "rofl": "roflmao"}
-{}
+{"and so on": true}
+{"and so forth": true}

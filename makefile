@@ -28,4 +28,4 @@ clean:
 test: all
 	$(BIN) test.json
 	# cat test.json | $(BIN)
-	$(BIN) -d test.dict -b test.bj -o dec.json -g
+	$(BIN) -d test.dict -b test.bj -o output.json -g

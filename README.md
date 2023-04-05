@@ -6,9 +6,12 @@ Value types are restricted to `strings`, `integers` and `booleans`.
 Example file:
 ```json
 {"key": "value", "another": 42}
-{"other": false}
-...
+{"and so on": true}
+{"and so forth": true}
 ```
+
+## Usage 
+
 ```
 Usage: jpak file.json
     -h          print this message and exit
@@ -16,6 +19,26 @@ Usage: jpak file.json
     -d file     string dictionary
     -o file     destination of decoded json
     -g          print debug info to stdout when unpacking
+```
+Example:
+
+```
+jpak your_file.json
+```
+
+This will produce a binary `your_file.bj` and a string dictionary `your_file.dict`.
+
+
+Or you could pipe it:
+
+```
+cat your_file.json | jpak
+```
+
+And to decode - supply the generated files and an output destination.
+
+```
+jpak -b binary.bj -d dictionary.dic -o output.json
 ```
 
 ## Internals
