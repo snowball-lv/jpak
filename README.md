@@ -55,7 +55,7 @@ The TLV type field is 1 byte, length is 4 bytes and the string key is also 4 byt
 
 Strings have a hard limit of `MAX_STR` when lexing. Therefore that's the limit of your JSON strings as well.
 
-If something goes wrong it prints and error and immediately quits.
+If something goes wrong it prints an error and immediately quits.
 
 ## Build
 
