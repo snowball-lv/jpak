@@ -5,7 +5,7 @@
 #include <sys/mman.h>
 #include <nxlog/nxlog.h>
 
-#define MAX_TOK 256
+#define MAX_STR 512
 
 enum {
     T_NONE,
@@ -35,14 +35,17 @@ typedef struct {
 
 typedef struct {
     Table *dict;
+    const char *pbin;
+    const char *pdict;
+    const char *pout;
+    int debug;
 } Unpacker;
 
+// interns new strings and adds them to strtab
 // buf has to be zero terminated
 static char *newstr(Parser *p, char *buf, int len) {
-    if (tabhas(p->strtab, buf)) {
-        printf("already has %s\n", buf);
+    if (tabhas(p->strtab, buf))
         return tabget(p->strtab, buf).str;
-    }
     char *cpy = malloc(len + 1);
     strncpy(cpy, buf, len);
     cpy[len] = 0;
@@ -54,9 +57,9 @@ static char *newstr(Parser *p, char *buf, int len) {
 // Not buffering input manually and relying on fgetc() buffering
 // being good enough for the task.
 // Using a maximum of 1 ungetc().
-// Token size limited to MAX_TOK.
+// Token size limited to MAX_STR.
 static Tok nexttok(Parser *p) {
-    char buf[MAX_TOK];
+    char buf[MAX_STR];
     int len = 0;
     int c = fgetc(p->fp);
     int esc = 0; // for escaping double quotes in strings
@@ -147,6 +150,7 @@ static void expectval(Parser *p) {
     ERR("expected value");
 }
 
+// parses records and simultaneously writes them to the binary
 static void parserecord(Parser *p) {
     expect(p, T_L_PAREN);
     char type = T_RECORD;
@@ -167,16 +171,6 @@ static void parserecord(Parser *p) {
         expect(p, T_COLON);
         expectval(p);
         Tok val = p->prev;
-
-        printf("%.*s --- ", key.len, key.start);
-        switch (val.type) {
-        case T_TRUE: printf("true\n"); break;
-        case T_FALSE: printf("false\n"); break;
-        case T_NUM: printf("%i\n", val.num); break;
-        case T_STR: printf("%.*s\n", val.len, val.start); break;
-        default: break;
-        }
-
         fwrite(&val.type, 1, 1, p->fpbj);
         len = sizeof(int); // size of int key
         if (val.type == T_NUM) len += sizeof(int);
@@ -187,7 +181,6 @@ static void parserecord(Parser *p) {
             fwrite(&val.num, sizeof(int), 1, p->fpbj);
         else if (val.type == T_STR)
             fwrite(val.start, val.len, 1, p->fpbj);
-
         if (!match(p, T_COMMA)) break;
     }
     expect(p, T_R_PAREN);
@@ -222,11 +215,13 @@ static void packdict(const char *path, Parser *p) {
 }
 
 static void pack(const char *path) {
+    if (!path) printf("No input file specified, using stdin\n");
     char tmp[FILENAME_MAX];
     Parser p = {0};
     p.strtab = newtab();
     p.keytab = newtab();
-    p.fp = fopen(path, "r");
+    p.fp = path ? fopen(path, "r") : stdin;
+    if (!path) path = "records.json";
     if (!p.fp) ERR("couldn't open %s", path);
     chext(tmp, path, "bj");
     p.fpbj = fopen(tmp, "wb");
@@ -241,7 +236,8 @@ static void pack(const char *path) {
 }
 
 static void loaddict(Unpacker *up, const char *path) {
-    printf("---- %s ---\n", path);
+    if (up->debug)
+        printf("--- %s ---\n", up->pdict);
     FILE *fp = fopen(path, "rb");
     if (!fp) ERR("couldn't load dictionary");
     char type;
@@ -249,60 +245,69 @@ static void loaddict(Unpacker *up, const char *path) {
     int id;
     for (;;) {
         // could batch read, but i'll leave it more readable
+        // first read can fail, the rest are likely bugs
         if (fread(&type, 1, 1, fp) != 1) break;
-        if (fread(&len, sizeof(int), 1, fp) != 1) break;
-        if (fread(&id, sizeof(int), 1, fp) != 1) break;
+        if (fread(&len, sizeof(int), 1, fp) != 1) goto bug;
+        if (fread(&id, sizeof(int), 1, fp) != 1) goto bug;
         int strl = len - sizeof(int);
         char *str = malloc(strl + 1);
-        if (fread(str, strl, 1, fp) != 1) break;
+        if (fread(str, strl, 1, fp) != 1) goto bug;
         str[strl] = 0;
-        printf("%i %s\n", id, str);
         char *key = malloc(16);
         sprintf(key, "%i", id);
         tabput(up->dict, key, (TVal){str});
+        if (up->debug)
+            printf("\"%s\": %i\n", str, id);
     }
+    goto end;
+bug:
+    ERR("malformed dictionary");
+end:
     fclose(fp);
 }
 
-static void unpack(const char *bin, const char *dict, const char *out) {
-    Unpacker up = {0};
-    up.dict = newtab();
-    loaddict(&up, dict);
-    FILE *fpbj = fopen(bin, "rb");
-    if (!fpbj) ERR("couldn't open %s", bin);
-    FILE *fpjson = fopen(out, "wb");
-    if (!fpjson) ERR("couldn't open %s", out);
+static void unpack(Unpacker *up) {
+    up->dict = newtab();
+    loaddict(up, up->pdict);
+    FILE *fpbj = fopen(up->pbin, "rb");
+    if (!fpbj) ERR("couldn't open %s", up->pbin);
+    FILE *fpjson = fopen(up->pout, "wb");
+    if (!fpjson) ERR("couldn't open %s", up->pout);
     char type = 0;
     int reclen;
     int len;
     int keyi;
     int num;
-    char str[64];
-    printf("--- bin json ---\n");
+    char str[MAX_STR];
     for (;;) {
+        // if the first read of the record fails we're safe and can break
+        // all other failures are likely bugs in the file
         if (fread(&type, 1, 1, fpbj) != 1) break;
-        if (fread(&reclen, sizeof(int), 1, fpbj) != 1) break;
-        printf("reclen %i\n", reclen);
+        if (fread(&reclen, sizeof(int), 1, fpbj) != 1) goto bug;
         fprintf(fpjson, "{");
         long pos = ftell(fpbj);
         while (ftell(fpbj) < pos + reclen) {
             if (type != T_RECORD) fprintf(fpjson, ",");
-            if (fread(&type, 1, 1, fpbj) != 1) break;
-            if (fread(&len, sizeof(int), 1, fpbj) != 1) break;
-            if (fread(&keyi, sizeof(int), 1, fpbj) != 1) break;
+            if (fread(&type, 1, 1, fpbj) != 1) goto bug;
+            if (fread(&len, sizeof(int), 1, fpbj) != 1) goto bug;
+            if (fread(&keyi, sizeof(int), 1, fpbj) != 1) goto bug;
             char keyibuf[16];
             sprintf(keyibuf, "%i", keyi);
-            char *keystr = tabget(up.dict, keyibuf).str;
+            if (!tabhas(up->dict, keyibuf))
+                ERR("Dictionary missing key %i", keyi);
+            char *keystr = tabget(up->dict, keyibuf).str;
             fprintf(fpjson, "\"%s\":", keystr);
             switch (type) {
             case T_TRUE: fprintf(fpjson, "true"); break;
             case T_FALSE: fprintf(fpjson, "false"); break;
             case T_NUM:
-                fread(&num, sizeof(int), 1, fpbj);
+                if (fread(&num, sizeof(int), 1, fpbj) != 1)
+                    continue;
                 fprintf(fpjson, "%i", num);
                 break;
             case T_STR:
-                fread(&str, len - sizeof(int), 1, fpbj);
+                if (fread(&str, len - sizeof(int), 1, fpbj) != 1)
+                    continue;
                 str[len - sizeof(int)] = 0;
                 fprintf(fpjson, "\"%s\"", str);
                 break;
@@ -310,9 +315,13 @@ static void unpack(const char *bin, const char *dict, const char *out) {
         }
         fprintf(fpjson, "}\n");
     }
+    goto end;
+bug:
+    ERR("malformed binary");
+end:
     fclose(fpbj);
     fclose(fpjson);
-    freetab(up.dict);
+    freetab(up->dict);
 }
 
 static const char *OPTS[] = {
@@ -337,11 +346,13 @@ int main(int argc, char **argv) {
     char *obin = 0;
     char *odict = 0;
     char *oout = 0;
+    int odebug = 0;
     for (int i = 1; i < argc; i++) {
         if (strcmp("-h", argv[i]) == 0) ohelp = 1;
         else if (strcmp("-b", argv[i]) == 0) obin = argv[++i];
         else if (strcmp("-d", argv[i]) == 0) odict = argv[++i];
         else if (strcmp("-o", argv[i]) == 0) oout = argv[++i];
+        else if (strcmp("-g", argv[i]) == 0) odebug = 1;
         else if (!path) path = argv[i];
         else {
             help();
@@ -354,15 +365,16 @@ int main(int argc, char **argv) {
     }
     else if (obin || odict || oout) {
         if (obin && odict && oout) {
-            unpack(obin, odict, oout);
+            Unpacker up = {0};
+            up.pbin = obin;
+            up.pdict = odict;
+            up.pout = oout;
+            up.debug = odebug;
+            unpack(&up);
             return 0;
         }
         help();
         ERR("to decode provide a binary, a dictionary and an output file");
-    }
-    else if (!path) {
-        help();
-        ERR("missing input file");
     }
     else {
         pack(path);
