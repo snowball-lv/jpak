@@ -13,8 +13,8 @@ void err(char *fmt, ...) {
 }
 
 // http://www.cse.yorku.ca/~oz/hash.html
-int strhash(const char *str) {
-    int hash = 5381;
+unsigned strhash(const char *str) {
+    unsigned hash = 5381;
     int c;
     while ((c = *str++))
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
@@ -50,7 +50,7 @@ void freetab(Table *t) {
 // % could be optimized away if only sticking to power of 2 table sizes
 static TSlot *find(Table *t, const char *key) {
     if (!t->nslots) return 0;
-    int hash = strhash(key);
+    unsigned hash = strhash(key);
     int idx = hash % t->nslots;
     TSlot *s = &t->slots[idx];
     while (s->key && strcmp(s->key, key) != 0) {

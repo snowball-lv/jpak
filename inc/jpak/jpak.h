@@ -4,7 +4,7 @@
 void err(char *fmt, ...);
 #define ERR(fmt, ...) err("*** " fmt "\n", ##__VA_ARGS__)
 
-int strhash(const char *str);
+unsigned strhash(const char *str);
 void chext(char *dst, const char *path, const char *ext);
 
 typedef union {
