@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <nxlog/nxlog.h>
+#include <jpak/jpak.h>
 
 void err(char *fmt, ...) {
     va_list va;

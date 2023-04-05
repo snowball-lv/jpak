@@ -1,7 +1,7 @@
 Packs/unpacks JSON files to a TLV format with an external string storage.
 
 The files have to be a series of non-comma-separated JSON objects.
-Value types are restricted to `strings` `integers` and `booleans`.
+Value types are restricted to `strings`, `integers` and `booleans`.
 
 Example file:
 ```json
@@ -20,13 +20,13 @@ Usage: jpak file.json
 
 ## Internals
 
-The JSON lexer/parser is handwritten and uses `getc` isntead of file-mapping in case we might want to pipe input to the program instead of passing a file.
+The JSON lexer/parser is handwritten and uses `getc` instead of file-mapping in case we might want to pipe input to the program instead of passing a file.
 
 Input isn't manually buffered and instead I rely on the buffering done by the standard library to be "good enough". Uses maximum of 1 `ungetc` which should be safe.
 
 Endianness isn't considered i.e. only safe to pack/unpack on the same machine.
 
-Hashmap is also handwritten. The packer never removes keys from any map and hence this function is missing from the hasmap implementation. This allowed it to be a bit simpler - by omitting tombstones.
+Hashmap is also handwritten. The packer never removes keys from any map and hence this function is missing from the hashmap implementation. This allowed it to be a bit simpler - by omitting tombstones.
 
 The TLV type field is 1 byte, length is 4 bytes and the string key is also 4 bytes. (Not very compact for lots booleans).
 

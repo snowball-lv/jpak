@@ -3,7 +3,7 @@
 #include <ctype.h>
 #include <string.h>
 #include <sys/mman.h>
-#include <nxlog/nxlog.h>
+#include <jpak/jpak.h>
 
 #define MAX_STR 512
 
