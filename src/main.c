@@ -7,6 +7,8 @@
 
 #define MAX_STR 512
 
+// token types for the lexer
+// also used as types in TLV
 enum {
     T_NONE,
     T_EOF,
@@ -18,11 +20,13 @@ enum {
 // Not perfectly aligned but not important
 typedef struct {
     int8_t type;
-    char *start;
-    int32_t len;
-    int32_t num;
+    char *start; // only holds values for string types
+    int32_t len; // length of string (a bit redundant after rework)
+    int32_t num; // number type value
 } Tok;
 
+// the context structure getting passed around when packing
+// holds all necessary data, like input/output files and dictionaries
 typedef struct {
     FILE *fp;
     Tok prev;
@@ -33,12 +37,13 @@ typedef struct {
     Table *keytab;
 } Parser;
 
+// context structure when unpacked
 typedef struct {
     Table *dict;
-    const char *pbin;
-    const char *pdict;
-    const char *pout;
-    int debug;
+    const char *pbin;   // binary file path to unpack
+    const char *pdict;  // dictionary file path
+    const char *pout;   // unpacked json path
+    int debug;          // set to print dict. to stdout when unpacking
 } Unpacker;
 
 // interns new strings and adds them to strtab
@@ -63,6 +68,7 @@ static Tok nexttok(Parser *p) {
     int len = 0;
     int c = fgetc(p->fp);
     int esc = 0; // for escaping double quotes in strings
+    // skip over whitespace
     while (isspace(c))
         c = fgetc(p->fp);
     switch (c) {
@@ -95,7 +101,7 @@ str:
         }
         else if (!esc && c == '"') {
             buf[len++] = c;
-            // strip quotes
+            // strip start and end quotes from strings
             buf[len - 1] = 0;
             return (Tok){T_STR, newstr(p, buf + 1, len - 2), len - 2};
         }
@@ -164,15 +170,20 @@ static void parserecord(Parser *p) {
     long recstart = ftell(p->fpbj);
     while (peek(p) != T_R_PAREN) {
         expect(p, T_STR);
+        
+        // assign each new key a sequential integer id
         Tok key = p->prev;
         if (!tabhas(p->keytab, key.start)) {
             tabput(p->keytab, key.start, (TVal){.i=p->nkeys});
             p->nkeys++;
         }
         int32_t keyi = tabget(p->keytab, key.start).i;
+
         expect(p, T_COLON);
         expectval(p);
         Tok val = p->prev;
+
+        // write out in TLV format
         fwrite(&val.type, 1, 1, p->fpbj);
         len = sizeof(int32_t); // size of int key
         if (val.type == T_NUM) len += sizeof(int32_t);
@@ -183,9 +194,12 @@ static void parserecord(Parser *p) {
             fwrite(&val.num, sizeof(int32_t), 1, p->fpbj);
         else if (val.type == T_STR)
             fwrite(val.start, val.len, 1, p->fpbj);
+
+        // if next tok isn't a comma we assume we're done with the record
         if (!match(p, T_COMMA)) break;
     }
     expect(p, T_R_PAREN);
+    // jump back, update record length and jump back to current pos again
     long recend = ftell(p->fpbj);
     len = recend - recstart;
     fsetpos(p->fpbj, &reclen);
@@ -263,6 +277,7 @@ static void loaddict(Unpacker *up, const char *path) {
         if (fread(&len, sizeof(int32_t), 1, fp) != 1) goto bug;
         if (fread(&id, sizeof(int32_t), 1, fp) != 1) goto bug;
         int strl = len - sizeof(int32_t);
+        // remember to delete allocated key and string !!!
         char *str = malloc(strl + 1);
         if (fread(str, strl, 1, fp) != 1) goto bug;
         str[strl] = 0;
@@ -293,11 +308,14 @@ static void unpack(Unpacker *up) {
     int32_t num;
     char str[MAX_STR];
     for (;;) {
+
         // if the first read of the record fails we're safe and can break
         // all other failures are likely bugs in the file
         if (fread(&type, 1, 1, fpbj) != 1) break;
         if (fread(&reclen, sizeof(int32_t), 1, fpbj) != 1) goto bug;
         fprintf(fpjson, "{");
+        
+        // loop over fields until we exceed the size of the current record
         long pos = ftell(fpbj);
         while (ftell(fpbj) < pos + reclen) {
             if (type != T_RECORD) fprintf(fpjson, ",");
@@ -334,7 +352,7 @@ bug:
 end:
     fclose(fpbj);
     fclose(fpjson);
-    // delete dictionary keys and vlaues
+    // delete dictionary keys and values
     int i = 0;
     TSlot slot;
     while ((i = tabgeti(up->dict, i, &slot))) {
