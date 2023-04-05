@@ -9,7 +9,7 @@ void chext(char *dst, const char *path, const char *ext);
 
 typedef union {
     char *str;
-    int i;
+    int32_t i;
 } TVal;
 
 typedef struct {

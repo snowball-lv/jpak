@@ -28,7 +28,7 @@ Endianness isn't considered i.e. only safe to pack/unpack on the same machine.
 
 Hashmap is also handwritten. The packer never removes keys from any map and hence this function is missing from the hashmap implementation. This allowed it to be a bit simpler - by omitting tombstones.
 
-The TLV type field is 1 byte, length is 4 bytes and the string key is also 4 bytes. (Not very compact for lots booleans).
+The TLV type field is 1 byte, length is 4 bytes and the string key is also 4 bytes. (Not very compact for lots booleans). Length and key could be smaller, but limits to string sizes and amounts aren't clearly specified so they're left at 4.
 
 Strings have a hard limit of `MAX_STR` when lexing. Therefore that's the limit of your JSON strings as well.
 

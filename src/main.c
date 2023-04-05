@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <string.h>
-#include <sys/mman.h>
+#include <stdint.h>
 #include <jpak/jpak.h>
 
 #define MAX_STR 512
@@ -17,10 +17,10 @@ enum {
 
 // Not perfectly aligned but not important
 typedef struct {
-    char type;
+    int8_t type;
     char *start;
-    int len;
-    int num;
+    int32_t len;
+    int32_t num;
 } Tok;
 
 typedef struct {
@@ -153,12 +153,14 @@ static void expectval(Parser *p) {
 // parses records and simultaneously writes them to the binary
 static void parserecord(Parser *p) {
     expect(p, T_L_PAREN);
-    char type = T_RECORD;
-    int len = 0;
+    int8_t type = T_RECORD;
+    int32_t len = 0;
     fwrite(&type, 1, 1, p->fpbj);
     fpos_t reclen;
     fgetpos(p->fpbj, &reclen);
-    fwrite(&len, sizeof(int), 1, p->fpbj);
+    fwrite(&len, sizeof(int32_t), 1, p->fpbj);
+    // record starting position of record and update the length
+    // after writing out all the fields of the record
     long recstart = ftell(p->fpbj);
     while (peek(p) != T_R_PAREN) {
         expect(p, T_STR);
@@ -167,18 +169,18 @@ static void parserecord(Parser *p) {
             tabput(p->keytab, key.start, (TVal){.i=p->nkeys});
             p->nkeys++;
         }
-        int keyi = tabget(p->keytab, key.start).i;
+        int32_t keyi = tabget(p->keytab, key.start).i;
         expect(p, T_COLON);
         expectval(p);
         Tok val = p->prev;
         fwrite(&val.type, 1, 1, p->fpbj);
-        len = sizeof(int); // size of int key
-        if (val.type == T_NUM) len += sizeof(int);
+        len = sizeof(int32_t); // size of int key
+        if (val.type == T_NUM) len += sizeof(int32_t);
         else if (val.type == T_STR) len += val.len;
-        fwrite(&len, sizeof(int), 1, p->fpbj);
-        fwrite(&keyi, sizeof(int), 1, p->fpbj);
+        fwrite(&len, sizeof(int32_t), 1, p->fpbj);
+        fwrite(&keyi, sizeof(int32_t), 1, p->fpbj);
         if (val.type == T_NUM)
-            fwrite(&val.num, sizeof(int), 1, p->fpbj);
+            fwrite(&val.num, sizeof(int32_t), 1, p->fpbj);
         else if (val.type == T_STR)
             fwrite(val.start, val.len, 1, p->fpbj);
         if (!match(p, T_COMMA)) break;
@@ -187,7 +189,7 @@ static void parserecord(Parser *p) {
     long recend = ftell(p->fpbj);
     len = recend - recstart;
     fsetpos(p->fpbj, &reclen);
-    fwrite(&len, sizeof(int), 1, p->fpbj);
+    fwrite(&len, sizeof(int32_t), 1, p->fpbj);
     fseek(p->fpbj, len, SEEK_CUR);
 }
 
@@ -203,12 +205,12 @@ static void packdict(const char *path, Parser *p) {
     TSlot slot;
     int i = 0;
     while ((i = tabgeti(p->keytab, i, &slot))) {
-        char type = T_STR;
+        int8_t type = T_STR;
         int strl = strlen(slot.key);
-        int len = sizeof(int) + strl; // index + strlen
+        int32_t len = sizeof(int32_t) + strl; // index + strlen
         fwrite(&type, 1, 1, fp);
-        fwrite(&len, sizeof(int), 1, fp);
-        fwrite(&slot.val.i, sizeof(int), 1, fp);
+        fwrite(&len, sizeof(int32_t), 1, fp);
+        fwrite(&slot.val.i, sizeof(int32_t), 1, fp);
         fwrite(slot.key, strl, 1, fp);
     }
     fclose(fp);
@@ -251,16 +253,16 @@ static void loaddict(Unpacker *up, const char *path) {
         printf("--- %s ---\n", up->pdict);
     FILE *fp = fopen(path, "rb");
     if (!fp) ERR("couldn't load dictionary");
-    char type;
-    int len;
-    int id;
+    int8_t type;
+    int32_t len;
+    int32_t id;
     for (;;) {
         // could batch read, but i'll leave it more readable
         // first read can fail, the rest are likely bugs
         if (fread(&type, 1, 1, fp) != 1) break;
-        if (fread(&len, sizeof(int), 1, fp) != 1) goto bug;
-        if (fread(&id, sizeof(int), 1, fp) != 1) goto bug;
-        int strl = len - sizeof(int);
+        if (fread(&len, sizeof(int32_t), 1, fp) != 1) goto bug;
+        if (fread(&id, sizeof(int32_t), 1, fp) != 1) goto bug;
+        int strl = len - sizeof(int32_t);
         char *str = malloc(strl + 1);
         if (fread(str, strl, 1, fp) != 1) goto bug;
         str[strl] = 0;
@@ -284,25 +286,25 @@ static void unpack(Unpacker *up) {
     if (!fpbj) ERR("couldn't open %s", up->pbin);
     FILE *fpjson = fopen(up->pout, "wb");
     if (!fpjson) ERR("couldn't open %s", up->pout);
-    char type = 0;
-    int reclen;
-    int len;
-    int keyi;
-    int num;
+    int8_t type = 0;
+    int32_t reclen;
+    int32_t len;
+    int32_t keyi;
+    int32_t num;
     char str[MAX_STR];
     for (;;) {
         // if the first read of the record fails we're safe and can break
         // all other failures are likely bugs in the file
         if (fread(&type, 1, 1, fpbj) != 1) break;
-        if (fread(&reclen, sizeof(int), 1, fpbj) != 1) goto bug;
+        if (fread(&reclen, sizeof(int32_t), 1, fpbj) != 1) goto bug;
         fprintf(fpjson, "{");
         long pos = ftell(fpbj);
         while (ftell(fpbj) < pos + reclen) {
             if (type != T_RECORD) fprintf(fpjson, ",");
             if (fread(&type, 1, 1, fpbj) != 1) goto bug;
-            if (fread(&len, sizeof(int), 1, fpbj) != 1) goto bug;
-            if (fread(&keyi, sizeof(int), 1, fpbj) != 1) goto bug;
-            char keyibuf[16];
+            if (fread(&len, sizeof(int32_t), 1, fpbj) != 1) goto bug;
+            if (fread(&keyi, sizeof(int32_t), 1, fpbj) != 1) goto bug;
+            char keyibuf[16]; // buffer big enough to store a 4 byte int
             sprintf(keyibuf, "%i", keyi);
             if (!tabhas(up->dict, keyibuf))
                 ERR("Dictionary missing key %i", keyi);
@@ -312,14 +314,14 @@ static void unpack(Unpacker *up) {
             case T_TRUE: fprintf(fpjson, "true"); break;
             case T_FALSE: fprintf(fpjson, "false"); break;
             case T_NUM:
-                if (fread(&num, sizeof(int), 1, fpbj) != 1)
+                if (fread(&num, sizeof(int32_t), 1, fpbj) != 1)
                     continue;
                 fprintf(fpjson, "%i", num);
                 break;
             case T_STR:
-                if (fread(&str, len - sizeof(int), 1, fpbj) != 1)
+                if (fread(&str, len - sizeof(int32_t), 1, fpbj) != 1)
                     continue;
-                str[len - sizeof(int)] = 0;
+                str[len - sizeof(int32_t)] = 0;
                 fprintf(fpjson, "\"%s\"", str);
                 break;
             }
