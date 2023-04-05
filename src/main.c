@@ -327,7 +327,7 @@ static void help() {
     printf("Usage: jpak file.json\n");
     for (const char **opt = OPTS; *opt; opt++) {
         char *sep = strchr(*opt, ':');
-        printf("%4s%-8.*s%s\n", "", (int)(sep - *opt), *opt, sep + 1);
+        printf("%4s%-12.*s%s\n", "", (int)(sep - *opt), *opt, sep + 1);
     }
 }
 
