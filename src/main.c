@@ -283,7 +283,8 @@ static void loaddict(Unpacker *up, const char *path) {
         int strl = len - sizeof(int32_t);
         // remember to delete allocated key and string !!!
         char *str = malloc(strl + 1);
-        if (fread(str, strl, 1, fp) != 1) goto bug;
+        // bug only if read failed AND strl > 0 (empty strings also exist)
+        if (strl && fread(str, strl, 1, fp) != 1) goto bug;
         str[strl] = 0;
         char *key = malloc(16);
         sprintf(key, "%i", id);
@@ -310,6 +311,7 @@ static void unpack(Unpacker *up) {
     int32_t len;
     int32_t keyi;
     int32_t num;
+    int strl;
     char str[MAX_STR];
     for (;;) {
 
@@ -341,7 +343,9 @@ static void unpack(Unpacker *up) {
                 fprintf(fpjson, "%i", num);
                 break;
             case T_STR:
-                if (fread(&str, len - sizeof(int32_t), 1, fpbj) != 1)
+                strl = len - sizeof(int32_t);
+                // fail only of strl > 0 (empty strings exist)
+                if (strl && fread(&str, len - sizeof(int32_t), 1, fpbj) != 1)
                     continue;
                 str[len - sizeof(int32_t)] = 0;
                 fprintf(fpjson, "\"%s\"", str);

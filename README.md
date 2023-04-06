@@ -57,6 +57,10 @@ Strings have a hard limit of `MAX_STR` when lexing. Therefore that's the limit o
 
 If something goes wrong it prints an error and immediately quits.
 
+## Testing
+
+In the `test` directory you'll find a `makefile` you can run to verify the correctness of the program. You'll need `ruby` to run a script that generates a random record of json objects and you'll need `jq` to compare the input and output json files for equality.
+
 ## Build
 
 ```bash
