@@ -10,4 +10,4 @@ input.json:
 	./gen.rb >input.json
 
 clean:
-	rm *.json *.bj *.dict
+	rm -f *.json *.bj *.dict
