@@ -66,7 +66,7 @@ static int32_t fread32(FILE *fp) {
     if (fread(&dst, sizeof(int32_t), 1, fp) != 1)
         ERR("Read failed");
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    dst = swap32(i);
+    dst = swap32(dst);
 #endif
     return dst;
 }
