@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <jpak/jpak.h>
 
-#define MAX_STR 512
+#define MAX_STR 4096
 
 // token types for the lexer
 // also used as types in TLV
@@ -35,6 +35,7 @@ typedef struct {
     Table *strtab;
     int nkeys;
     Table *keytab;
+    char *tbuf; // buffer for lexing, malloc to MAX_STR + space for terminal 0
 } Parser;
 
 // context structure when unpacked
@@ -68,7 +69,6 @@ static char *newstr(Parser *p, char *buf, int len) {
 // Using a maximum of 1 ungetc().
 // Token size limited to MAX_STR.
 static Tok nexttok(Parser *p) {
-    char buf[MAX_STR];
     int len = 0;
     int c = fgetc(p->fp);
     int esc = 0; // for escaping double quotes in strings
@@ -81,50 +81,53 @@ static Tok nexttok(Parser *p) {
     case '}': return (Tok){T_R_PAREN};
     case ',': return (Tok){T_COMMA};
     case ':': return (Tok){T_COLON};
-    case '\"': buf[len++] = c; c = fgetc(p->fp); goto str;
-    case '-': buf[len++] = c; c = fgetc(p->fp); goto num;
+    case '\"': p->tbuf[len++] = c; c = fgetc(p->fp); goto str;
+    case '-': p->tbuf[len++] = c; c = fgetc(p->fp); goto num;
     case 't': case 'f': goto boolean;
     }
     if (isdigit(c)) goto num;
     ERR("unexpected char %c", c);
 num:
     while (isdigit(c)) {
-        buf[len++] = c;
+        if (len >= MAX_STR) ERR("Max token size exceeded");
+        p->tbuf[len++] = c;
         c = fgetc(p->fp);
     }
-    buf[len] = 0;
+    p->tbuf[len] = 0;
     ungetc(c, p->fp);
-    return (Tok){T_NUM, 0, 0, atoi(buf)};
+    return (Tok){T_NUM, 0, 0, atoi(p->tbuf)};
 str:
     while (c) {
+        if (len >= MAX_STR) ERR("Max token size exceeded");
         if (!esc && c == '\\') {
             esc = 1;
-            buf[len++] = c;
+            p->tbuf[len++] = c;
             c = fgetc(p->fp);
             continue;
         }
         else if (!esc && c == '"') {
-            buf[len++] = c;
+            p->tbuf[len++] = c;
             // strip start and end quotes from strings
-            buf[len - 1] = 0;
-            return (Tok){T_STR, newstr(p, buf + 1, len - 2), len - 2};
+            p->tbuf[len - 1] = 0;
+            return (Tok){T_STR, newstr(p, p->tbuf + 1, len - 2), len - 2};
         }
-        buf[len++] = c;
+        p->tbuf[len++] = c;
         c = fgetc(p->fp);
         esc = 0;
     }
     ERR("unterminated string");
 boolean:
     while (isalpha(c)) {
-        buf[len++] = c;
+        if (len >= MAX_STR) ERR("Max token size exceeded");
+        p->tbuf[len++] = c;
         c = fgetc(p->fp);
     }
     ungetc(c, p->fp);
-    if (strncmp("true", buf, len) == 0)
+    if (strncmp("true", p->tbuf, len) == 0)
         return (Tok){T_TRUE};
-    else if (strncmp("false", buf, len) == 0)
+    else if (strncmp("false", p->tbuf, len) == 0)
         return (Tok){T_FALSE};
-    ERR("unexpected value %.*s", len, buf);
+    ERR("unexpected value %.*s", len, p->tbuf);
     return (Tok){T_EOF};
 }
 
@@ -238,6 +241,7 @@ static void pack(const char *path) {
     if (!path) printf("No input file specified, using stdin\n");
     char tmp[FILENAME_MAX];
     Parser p = {0};
+    p.tbuf = malloc(MAX_STR + 1); // + space for terminal 0
     p.strtab = newtab();
     p.keytab = newtab();
     p.fp = path ? fopen(path, "r") : stdin;
@@ -259,6 +263,7 @@ static void pack(const char *path) {
     }
     freetab(p.strtab);
     freetab(p.keytab);
+    free(p.tbuf);
 }
 
 // loads the dictionary file to a table
