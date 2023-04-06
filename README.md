@@ -47,7 +47,7 @@ The JSON lexer/parser is handwritten and uses `getc` instead of file-mapping in 
 
 Input isn't manually buffered and instead I rely on the buffering done by the standard library to be "good enough". Uses maximum of 1 `ungetc` which should be safe.
 
-Endianness isn't considered i.e. only safe to pack/unpack on the same machine.
+Endianness is handled, but not tested in BE environments. Take care packing/unpacking on different machines!
 
 Hashmap is also handwritten. The packer never removes keys from any map and hence this function is missing from the hashmap implementation. This allowed it to be a bit simpler - by omitting tombstones.
 
