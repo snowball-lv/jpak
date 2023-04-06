@@ -47,6 +47,30 @@ typedef struct {
     int debug;          // set to print dict. to stdout when unpacking
 } Unpacker;
 
+static int32_t swap32(int32_t i) {
+    return ((i >> 24) & 0x000000ff)
+         | ((i >> 8) & 0x0000ff00)
+         | ((i << 8) & 0x00ff0000)
+         | ((i << 24) & 0xff000000);
+}
+
+static void fwrite32(FILE *fp, int32_t i) {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    i = swap32(i);
+#endif
+    fwrite(&i, sizeof(int32_t), 1, fp);
+}
+
+static int32_t fread32(FILE *fp) {
+    int32_t dst;
+    if (fread(&dst, sizeof(int32_t), 1, fp) != 1)
+        ERR("Read failed");
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    dst = swap32(i);
+#endif
+    return dst;
+}
+
 // interns new strings and adds them to strtab.
 // buf has to be zero terminated.
 // we could prepend each string with a header holding it's length and
@@ -171,7 +195,7 @@ static void parserecord(Parser *p) {
     fwrite(&type, 1, 1, p->fpbj);
     fpos_t reclen;
     fgetpos(p->fpbj, &reclen);
-    fwrite(&len, sizeof(int32_t), 1, p->fpbj);
+    fwrite32(p->fpbj, len);
     // record starting position of record and update the length
     // after writing out all the fields of the record
     long recstart = ftell(p->fpbj);
@@ -195,10 +219,10 @@ static void parserecord(Parser *p) {
         len = sizeof(int32_t); // size of int key
         if (val.type == T_NUM) len += sizeof(int32_t);
         else if (val.type == T_STR) len += val.len;
-        fwrite(&len, sizeof(int32_t), 1, p->fpbj);
-        fwrite(&keyi, sizeof(int32_t), 1, p->fpbj);
+        fwrite32(p->fpbj, len);
+        fwrite32(p->fpbj, keyi);
         if (val.type == T_NUM)
-            fwrite(&val.num, sizeof(int32_t), 1, p->fpbj);
+            fwrite32(p->fpbj, val.num);
         else if (val.type == T_STR)
             fwrite(val.start, val.len, 1, p->fpbj);
 
@@ -210,7 +234,7 @@ static void parserecord(Parser *p) {
     long recend = ftell(p->fpbj);
     len = recend - recstart;
     fsetpos(p->fpbj, &reclen);
-    fwrite(&len, sizeof(int32_t), 1, p->fpbj);
+    fwrite32(p->fpbj, len);
     fseek(p->fpbj, len, SEEK_CUR);
 }
 
@@ -230,8 +254,8 @@ static void packdict(const char *path, Parser *p) {
         int strl = strlen(slot.key);
         int32_t len = sizeof(int32_t) + strl; // index + strlen
         fwrite(&type, 1, 1, fp);
-        fwrite(&len, sizeof(int32_t), 1, fp);
-        fwrite(&slot.val.i, sizeof(int32_t), 1, fp);
+        fwrite32(fp, len);
+        fwrite32(fp, slot.val.i);
         fwrite(slot.key, strl, 1, fp);
     }
     fclose(fp);
@@ -283,8 +307,8 @@ static void loaddict(Unpacker *up, const char *path) {
         // could batch read, but i'll leave it more readable
         // first read can fail, the rest are likely bugs
         if (fread(&type, 1, 1, fp) != 1) break;
-        if (fread(&len, sizeof(int32_t), 1, fp) != 1) goto bug;
-        if (fread(&id, sizeof(int32_t), 1, fp) != 1) goto bug;
+        len = fread32(fp);
+        id = fread32(fp);
         int strl = len - sizeof(int32_t);
         // remember to delete allocated key and string !!!
         char *str = malloc(strl + 1);
@@ -323,7 +347,7 @@ static void unpack(Unpacker *up) {
         // if the first read of the record fails we're safe and can break
         // all other failures are likely bugs in the file
         if (fread(&type, 1, 1, fpbj) != 1) break;
-        if (fread(&reclen, sizeof(int32_t), 1, fpbj) != 1) goto bug;
+        reclen = fread32(fpbj);
         fprintf(fpjson, "{");
         
         // loop over fields until we exceed the size of the current record
@@ -331,8 +355,8 @@ static void unpack(Unpacker *up) {
         while (ftell(fpbj) < pos + reclen) {
             if (type != T_RECORD) fprintf(fpjson, ",");
             if (fread(&type, 1, 1, fpbj) != 1) goto bug;
-            if (fread(&len, sizeof(int32_t), 1, fpbj) != 1) goto bug;
-            if (fread(&keyi, sizeof(int32_t), 1, fpbj) != 1) goto bug;
+            len = fread32(fpbj);
+            keyi = fread32(fpbj);
             char keyibuf[16]; // buffer big enough to store a 4 byte int
             sprintf(keyibuf, "%i", keyi);
             if (!tabhas(up->dict, keyibuf))
@@ -343,16 +367,15 @@ static void unpack(Unpacker *up) {
             case T_TRUE: fprintf(fpjson, "true"); break;
             case T_FALSE: fprintf(fpjson, "false"); break;
             case T_NUM:
-                if (fread(&num, sizeof(int32_t), 1, fpbj) != 1)
-                    continue;
+                num = fread32(fpbj);
                 fprintf(fpjson, "%i", num);
                 break;
             case T_STR:
                 strl = len - sizeof(int32_t);
                 // fail only of strl > 0 (empty strings exist)
-                if (strl && fread(&str, len - sizeof(int32_t), 1, fpbj) != 1)
+                if (strl && fread(&str, strl, 1, fpbj) != 1)
                     continue;
-                str[len - sizeof(int32_t)] = 0;
+                str[strl] = 0;
                 fprintf(fpjson, "\"%s\"", str);
                 break;
             }
